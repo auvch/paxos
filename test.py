@@ -15,8 +15,6 @@ if __name__ == '__main__':
     leader = Leader(60000, 0, [60001], [c.port for c in clients])
     leader2 = Leader(60001, 1, [60000], [c.port for c in clients])
     leader.start()
-    leader.setPrimary(True)
-    leader2.setPrimary(True)
     leader2.start()
     for c in clients:
         c.start()
@@ -27,12 +25,7 @@ if __name__ == '__main__':
     # Send some proposals through to test
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     start = time.time()
-    # for i in xrange(100):
-    #     m = Message(Message.MSG_EXT_PROPOSE)
-    #     m.value = i
-    #     m.to = 60001
-    #     bytes = pickle.dumps(m)
-    #     s.sendto(bytes, ("localhost", m.to))
+
     m = Message(Message.MSG_EXT_PROPOSE)
     m.instanceID = 1
     m.value = 1
@@ -57,19 +50,6 @@ if __name__ == '__main__':
     print '# ATTEMPT 3'
     s.sendto(bytes, ('localhost', m.to))
 
-    # leader.stop()
-    # time.sleep(2)
-    # m = Message(Message.MSG_EXT_PROPOSE)
-    # m.value = 3
-    # m.to = 60000
-    # bytes = pickle.dumps(m)
-    # print '# ATTEMPT 3'
-    # s.sendto(bytes, ('localhost', m.to))
-
-
-    # while leader2.getNumAccepted() < 99:
-    #     print "Sleeping for 1s -- accepted:", leader2.getNumAccepted()
-    #     time.sleep(1)
     end = time.time()
 
     print "Sleeping for 10s"

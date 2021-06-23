@@ -76,93 +76,24 @@ class Leader(object):
         else:
             self.acceptors = acceptors
         self.group = self.leaders + self.acceptors
-        self.isPrimary = False
         self.proposalCount = 0
         self.msg_handler = AsyncMessageHandler(self, port)
         self.instances = {}
-        self.hbListener = Leader.HeartbeatListener(self)
-        self.hbSender = Leader.HeartbeatSender(self)
         self.highestInstance = 0
         self.stopped = True
         # The last time we tried to fix up any gaps
         self.lasttime = time.time()
 
-    # ------------------------------------------------------
-    # These two classes listen for heartbeats from other leaders
-    # and, if none appear, tell this leader that it should
-    # be the primary
-
-    class HeartbeatListener(threading.Thread):
-        def __init__(self, leader):
-            self.leader = leader
-            self.queue = Queue.Queue()
-            self.abort = False
-            threading.Thread.__init__(self)
-
-        def newHB(self, message):
-            self.queue.put(message)
-
-        def doAbort(self):
-            self.abort = True
-
-        def run(self):
-            elapsed = 0
-            while not self.abort:
-                s = time.time()
-                try:
-                    hb = self.queue.get(True, 2)
-                    # Easy way to settle conflicts - if your port number is bigger than mine,
-                    # you get to be the leader
-                    if hb.source > self.leader.port:
-                        self.leader.setPrimary(False)
-                except:  # Nothing was got
-                    self.leader.setPrimary(True)
-
-    class HeartbeatSender(threading.Thread):
-        def __init__(self, leader):
-            self.leader = leader
-            self.abort = False
-            threading.Thread.__init__(self)
-
-        def doAbort(self):
-            self.abort = True
-
-        def run(self):
-            while not self.abort:
-                time.sleep(1)
-                if self.leader.isPrimary:
-                    msg = Message(Message.MSG_HEARTBEAT)
-                    msg.source = self.leader.port
-                    for l in self.leader.leaders:
-                        msg.to = l
-                        self.leader.sendMessage(msg)
-
-    # ------------------------------------------------------
     def sendMessage(self, message):
         self.msg_handler.sendMessage(message)
 
     def start(self):
-        self.hbSender.start()
-        self.hbListener.start()
         self.msg_handler.start()
         self.stopped = False
 
     def stop(self):
-        self.hbSender.doAbort()
-        self.hbListener.doAbort()
         self.msg_handler.doAbort()
         self.stopped = True
-
-    def setPrimary(self, primary):
-        if self.isPrimary != primary:
-            # Only print if something's changed
-            if primary:
-                print "I (%s) am the leader" % self.port
-            else:
-                print "I (%s) am NOT the leader" % self.port
-        self.isPrimary = primary
-
-    # ------------------------------------------------------
 
     def getGroup(self):
         return self.group
@@ -207,36 +138,19 @@ class Leader(object):
         if self.stopped:
             return
         if message == None:
-            # Only run every 15s otherwise you run the risk of cutting good protocols off in their prime :(
-            if self.isPrimary and time.time() - self.lasttime > 15.0:
-                self.findAndFillGaps()
-                self.garbageCollect()
             return
-        if message.command == Message.MSG_HEARTBEAT:
-            self.hbListener.newHB(message)
-            return True
         if message.command == Message.MSG_EXT_PROPOSE:
             print "External proposal received at port %s" % (self.port)
-            # if self.isPrimary:
-            #     self.newProposal(message.value)
             self.newProposal(message.value, instance=message.instanceID)
-            # else ignore - we're getting  proposals when we're not the primary
-            # what we should do, if we were being kind, is reply with a message saying 'leader has changed'
-            # and giving the address of the new one. However, we might just as well have failed.
             return True
-        if self.isPrimary and message.command != Message.MSG_ACCEPTOR_ACCEPT:
+        if message.command != Message.MSG_ACCEPTOR_ACCEPT:
             self.instances[message.instanceID].getProtocol(message.proposalID).doTransition(message)
-            # It's possible that, while we still think we're the primary, we'll get a
-        # accept message that we're only listening in on.
-        # We are interested in hearing all accepts, so we play along by pretending we've got the protocol
-        # that's getting accepted and listening for a quorum as per usual
         if message.command == Message.MSG_ACCEPTOR_ACCEPT:
             if message.instanceID not in self.instances:
                 self.instances[message.instanceID] = InstanceRecord()
             record = self.instances[message.instanceID]
             if message.proposalID not in record.protocols:
                 protocol = PaxosLeaderProtocol(self)
-                # We just massage this protocol to be in the waiting-for-accept state
                 protocol.state = PaxosLeaderProtocol.STATE_AGREED
                 protocol.proposalID = message.proposalID
                 protocol.instanceID = message.instanceID
@@ -244,7 +158,6 @@ class Leader(object):
                 record.addProtocol(protocol)
             else:
                 protocol = record.getProtocol(message.proposalID)
-            # Should just fall through to here if we initiated this protocol instance
             protocol.doTransition(message)
         return True
 
