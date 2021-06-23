@@ -3,6 +3,7 @@
 #_：acceptor fail
 #V：accept/agree
 #X：disagree
+
 import util
 
 class Log(object):
@@ -29,10 +30,9 @@ class Log(object):
         if tmp_dict is not None:
             return
         self.proposals.append({"id":proposalID, "agreements":[False for _ in range(self.num_acceptor)],
-        	"accepted":[False for _ in range(self.num_acceptor)]})#,"results_accepted":[False for _ in range(self.num_proposer)]})
+            "accepted":[False for _ in range(self.num_acceptor)]})#,"results_accepted":[False for _ in range(self.num_proposer)]})
     
     def add_event(self, event):
-    	#print(event)
         tmp_dict = util.search_dict_list(self.proposals, 'id', event['proposalID'])
         if tmp_dict is None:
             self.add_proposal(event['proposalID'])
