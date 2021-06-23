@@ -210,7 +210,7 @@ class Leader(object):
             print "External proposal received at port %s" % (self.port)
             # if self.isPrimary:
             #     self.newProposal(message.value)
-            self.newProposal(message.value, instance=1)
+            self.newProposal(message.value, instance=message.instanceID)
             # else ignore - we're getting  proposals when we're not the primary
             # what we should do, if we were being kind, is reply with a message saying 'leader has changed'
             # and giving the address of the new one. However, we might just as well have failed.

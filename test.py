@@ -29,6 +29,7 @@ if __name__ == '__main__':
     #     bytes = pickle.dumps(m)
     #     s.sendto(bytes, ("localhost", m.to))
     m = Message(Message.MSG_EXT_PROPOSE)
+    m.instanceID = 1
     m.value = 1
     m.to = 60001
     bytes = pickle.dumps(m)
@@ -36,10 +37,19 @@ if __name__ == '__main__':
     s.sendto(bytes, ('localhost', m.to))
 
     time.sleep(2)
+    m.instanceID = 1
     m.value = 2
     m.to = 60000
     bytes = pickle.dumps(m)
     print '# ATTEMPT 2'
+    s.sendto(bytes, ('localhost', m.to))
+
+    time.sleep(2)
+    m.instanceID = 1
+    m.value = 3
+    m.to = 60000
+    bytes = pickle.dumps(m)
+    print '# ATTEMPT 3'
     s.sendto(bytes, ('localhost', m.to))
 
     # leader.stop()
