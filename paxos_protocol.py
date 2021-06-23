@@ -1,5 +1,8 @@
 # coding=utf-8
+import log
 from message import Message
+
+LOG = log.LOG
 
 class PaxosLeaderProtocol(object):
     # 状态
@@ -49,6 +52,7 @@ class PaxosLeaderProtocol(object):
                     self.state = PaxosLeaderProtocol.STATE_AGREED
                     # Send 'accept' message to group
                     print "leader (%s) send accept to acceptors" % self.leader.port
+                    LOG.add_event({'proposalID':self.proposalID, 'type':'accept', 'value': True})
                     msg = Message(Message.MSG_ACCEPT)
                     msg.copyAsReply(message)
                     msg.value = self.value
@@ -63,6 +67,7 @@ class PaxosLeaderProtocol(object):
                 if self.rejectcount >= self.leader.getQuorumSize():
                     self.state = PaxosLeaderProtocol.STATE_REJECTED
                     self.leader.notifyLeader(self, message)
+                    LOG.add_event({'proposalID':self.proposalID, 'type':'accept', 'value': False})
                 return True
         if self.state == PaxosLeaderProtocol.STATE_AGREED:
             if message.command == Message.MSG_ACCEPTOR_ACCEPT:
@@ -109,12 +114,14 @@ class PaxosAcceptorProtocol(object):
                 msg.value = value
                 msg.sequence = (port, count)
                 print "acceptor (%s) agree proposal %s with value (%s)" % (self.client.port, self.proposalID, str(value))
+                LOG.add_event({'proposalID':self.proposalID, 'type':'agreement', 'acceptor':self.client.id, 'agreement': True})
                 self.client.sendMessage(msg)
             else:
                 # Too late, we already told someone else we'd do it
                 # Send reject message, along with highest proposal id and its value
                 print "acceptor (%s) reject proposal %s" % (self.client.port, self.proposalID)
                 self.state = PaxosAcceptorProtocol.STATE_PROPOSAL_REJECTED
+                LOG.add_event({'proposalID':self.proposalID, 'type':'agreement', 'acceptor':self.client.id, 'agreement': False})
             return self.proposalID
         else:
             pass
@@ -123,6 +130,7 @@ class PaxosAcceptorProtocol(object):
         if self.state == PaxosAcceptorProtocol.STATE_PROPOSAL_AGREED and message.command == Message.MSG_ACCEPT:
             self.state = PaxosAcceptorProtocol.STATE_PROPOSAL_ACCEPTED
             print "acceptor (%s) accept %s" % (self.client.port, self.proposalID)
+            LOG.add_event({'proposalID':self.proposalID, 'type':'accepted', 'acceptor':self.client.id, 'value': True})
             # Could check on the value here, if we don't trust leaders to honour what we tell them
             # send reply to leader acknowledging
             msg = Message(Message.MSG_ACCEPTOR_ACCEPT)

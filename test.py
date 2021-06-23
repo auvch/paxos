@@ -1,14 +1,19 @@
 import time
 import socket
 import pickle
+import log
 from message import Message
 from role import Acceptor, Leader
 
+LOG = log.LOG
+
 if __name__ == '__main__':
     numclients = 5
-    clients = [Acceptor(port, [60000, 60001]) for port in xrange(61000, 61000 + numclients)]
-    leader = Leader(60000, [60001], [c.port for c in clients])
-    leader2 = Leader(60001, [60000], [c.port for c in clients])
+    LOG.set_proposer(2)
+    LOG.set_acceptor(numclients)
+    clients = [Acceptor(port, port - 61000, [60000, 60001]) for port in xrange(61000, 61000 + numclients)]
+    leader = Leader(60000, 0, [60001], [c.port for c in clients])
+    leader2 = Leader(60001, 1, [60000], [c.port for c in clients])
     leader.start()
     leader.setPrimary(True)
     leader2.setPrimary(True)
@@ -68,4 +73,5 @@ if __name__ == '__main__':
 
     print "Leader 1 history: ", leader.getHistory()
     print "Leader 2 history: ", leader2.getHistory()
+    LOG.draw_results(print_all=True)
     print end - start

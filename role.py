@@ -2,17 +2,22 @@
 import threading
 import time
 import Queue
+import log
 from message import Message, MessageHandler, AsyncMessageHandler
 from record import InstanceRecord
 from paxos_protocol import PaxosLeaderProtocol, PaxosAcceptorProtocol
 
+LOG = log.LOG
+
 class Acceptor(object):
-    def __init__(self, port, leaders):
+    def __init__(self, port, id, leaders):
         self.port = port
+        self.id = id # start from 0
         self.leaders = leaders
         self.instances = {}
         self.msg_handler = AsyncMessageHandler(self, self.port)
         self.failed = False
+        LOG.set_acceptor_live(self.id, True)
 
     def start(self):
         self.msg_handler.start()
@@ -22,9 +27,11 @@ class Acceptor(object):
 
     def fail(self):
         self.failed = True
+        LOG.set_acceptor_live(self.id, False)
 
     def recover(self):
         self.failed = False
+        LOG.set_acceptor_live(self.id, True)
 
     def sendMessage(self, message):
         self.msg_handler.sendMessage(message)
@@ -48,6 +55,7 @@ class Acceptor(object):
     def notifyClient(self, protocol, message):
         if protocol.state == PaxosAcceptorProtocol.STATE_PROPOSAL_ACCEPTED:
             self.instances[protocol.instanceID].value = message.value
+            LOG.add_event({"type":"result", "acceptor":self.id, "proposalID":message.proposalID, "accepted":True, "value":message.value})
 
     def getHighestAgreedProposal(self, instance):
         return self.instances[instance].highestID
@@ -56,8 +64,9 @@ class Acceptor(object):
         return self.instances[instance].value
 
 class Leader(object):
-    def __init__(self, port, leaders=None, acceptors=None):
+    def __init__(self, port, id, leaders=None, acceptors=None):
         self.port = port
+        self.id = id # start from 0
         if leaders == None:
             self.leaders = []
         else:
@@ -248,6 +257,8 @@ class Leader(object):
             instanceID = instance
         self.proposalCount += 1
         id = (self.port, self.proposalCount)
+        LOG.add_proposal(id)
+        LOG.add_event({"type":"propose", "proposer":self.id, "proposalID":id})
         if instanceID in self.instances:
             record = self.instances[instanceID]
         else:
@@ -260,6 +271,7 @@ class Leader(object):
         # Protocols call this when they're done
         if protocol.state == PaxosLeaderProtocol.STATE_ACCEPTED:
             print "Protocol instance %s accepted with value %s" % (message.instanceID, message.value)
+            LOG.add_event({"type":"result", "proposer":self.id, "proposalID":message.proposalID, "accepted":True, "value":message.value})
             self.instances[message.instanceID].accepted = True
             self.instances[message.instanceID].value = message.value
             self.highestInstance = max(message.instanceID, self.highestInstance)
@@ -269,6 +281,7 @@ class Leader(object):
             # Eventually, assuming that the acceptors will accept some value for
             # this instance, the protocol will complete.
             self.proposalCount = max(self.proposalCount, message.highestPID[1])
+            #LOG.add_event({"type":"result", "proposalID":(self.port, self.proposalCount), "accepted":False})
             self.newProposal(message.value)
             return True
         if protocol.state == PaxosLeaderProtocol.STATE_UNACCEPTED:
