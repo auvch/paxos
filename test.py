@@ -64,4 +64,3 @@ if __name__ == '__main__':
     print "Leader 1 history: ", leader.getHistory()
     print "Leader 2 history: ", leader2.getHistory()
     LOG.draw_results(print_all=True)
-    print end - start
