@@ -144,14 +144,14 @@ class Log(object):
                 for _ in range(3-len(str(self.proposer_results[i]))):
                     result += " "
                 output += result
-            output += "    "
+            output += "   "
             for i in range(self.num_acceptor):
-            	output += " "
-                result = str(self.acceptor_results[i])
+                result = " " + str(self.acceptor_results[i])
                 for _ in range(3-len(str(self.acceptor_results[i]))):
-                    result += " "
+                    result = " " + result
+                #output += " "
                 output += result
-            output += " Value"
+            output += "  Value"
 
             print(output)
 
