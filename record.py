@@ -1,5 +1,5 @@
 # coding=utf-8
-from paxos_protocol import PaxosLeaderProtocol
+from paxos_protocol import PaxosProposerProtocol
 
 class InstanceRecord(object):
     # 记录每个 instance 的 protocols
@@ -23,6 +23,6 @@ class InstanceRecord(object):
         keys = self.protocols.keys()
         for k in keys:
             protocol = self.protocols[k]
-            if protocol.state == PaxosLeaderProtocol.STATE_ACCEPTED:
+            if protocol.state == PaxosProposerProtocol.STATE_ACCEPTED:
                 print "Deleting protocol"
                 del self.protocols[k]

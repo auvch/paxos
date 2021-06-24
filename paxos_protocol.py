@@ -4,7 +4,7 @@ from message import Message
 
 LOG = log.LOG
 
-class PaxosLeaderProtocol(object):
+class PaxosProposerProtocol(object):
     # 状态
     STATE_UNDEFINED = -1
     STATE_PROPOSED = 0
@@ -13,9 +13,9 @@ class PaxosLeaderProtocol(object):
     STATE_ACCEPTED = 3
     STATE_UNACCEPTED = 4
 
-    def __init__(self, leader):
-        self.leader = leader
-        self.state = PaxosLeaderProtocol.STATE_UNDEFINED
+    def __init__(self, proposer):
+        self.proposer = proposer
+        self.state = PaxosProposerProtocol.STATE_UNDEFINED
         self.proposalID = (-1, -1)
         self.agreecount, self.acceptcount = (0, 0)
         self.rejectcount, self.unacceptcount = (0, 0)
@@ -30,18 +30,18 @@ class PaxosLeaderProtocol(object):
         message.proposalID = proposalID
         message.instanceID = instanceID
         message.value = value
-        for server in self.leader.getAcceptors():
+        for server in self.proposer.getAcceptors():
             message.to = server
-            self.leader.sendMessage(message)
-        self.state = PaxosLeaderProtocol.STATE_PROPOSED
+            self.proposer.sendMessage(message)
+        self.state = PaxosProposerProtocol.STATE_PROPOSED
         return self.proposalID
 
     def doTransition(self, message):
         # 状态转移
-        if self.state == PaxosLeaderProtocol.STATE_PROPOSED:
+        if self.state == PaxosProposerProtocol.STATE_PROPOSED:
             if message.command == Message.MSG_ACCEPTOR_AGREE:
                 self.agreecount += 1
-                if self.agreecount >= self.leader.getQuorumSize():
+                if self.agreecount >= self.proposer.getQuorumSize():
                     print "Achieved agreement quorum, last value replied was:", message.value
                     if message.value != None:  # If it's none, can do what we like. Otherwise we have to take the highest seen proposal
                         if message.sequence[0] > self.highestseen[0] or (
@@ -49,37 +49,37 @@ class PaxosLeaderProtocol(object):
                             1]):
                             self.value = message.value
                             self.highestseen = message.sequence
-                    self.state = PaxosLeaderProtocol.STATE_AGREED
+                    self.state = PaxosProposerProtocol.STATE_AGREED
                     # Send 'accept' message to group
-                    print "leader (%s) send accept to acceptors" % self.leader.port
+                    print "Proposer (%s) send accept to acceptors" % self.proposer.port
                     LOG.add_event({'proposalID':self.proposalID, 'type':'accept', 'value': True})
                     msg = Message(Message.MSG_ACCEPT)
                     msg.copyAsReply(message)
                     msg.value = self.value
-                    msg.leaderID = msg.to
-                    for s in self.leader.getAcceptors():
+                    msg.proposerID = msg.to
+                    for s in self.proposer.getAcceptors():
                         msg.to = s
-                        self.leader.sendMessage(msg)
-                    self.leader.notifyLeader(self, message)
+                        self.proposer.sendMessage(msg)
+                    self.proposer.notifyProposer(self, message)
                 return True
             if message.command == Message.MSG_ACCEPTOR_REJECT:
                 self.rejectcount += 1
-                if self.rejectcount >= self.leader.getQuorumSize():
-                    self.state = PaxosLeaderProtocol.STATE_REJECTED
-                    self.leader.notifyLeader(self, message)
+                if self.rejectcount >= self.proposer.getQuorumSize():
+                    self.state = PaxosProposerProtocol.STATE_REJECTED
+                    self.proposer.notifyProposer(self, message)
                     LOG.add_event({'proposalID':self.proposalID, 'type':'accept', 'value': False})
                 return True
-        if self.state == PaxosLeaderProtocol.STATE_AGREED:
+        if self.state == PaxosProposerProtocol.STATE_AGREED:
             if message.command == Message.MSG_ACCEPTOR_ACCEPT:
                 self.acceptcount += 1
-                if self.acceptcount >= self.leader.getQuorumSize():
-                    self.state = PaxosLeaderProtocol.STATE_ACCEPTED
-                    self.leader.notifyLeader(self, message)
+                if self.acceptcount >= self.proposer.getQuorumSize():
+                    self.state = PaxosProposerProtocol.STATE_ACCEPTED
+                    self.proposer.notifyProposer(self, message)
             if message.command == Message.MSG_ACCEPTOR_UNACCEPT:
                 self.unacceptcount += 1
-                if self.unacceptcount >= self.leader.getQuorumSize():
-                    self.state = PaxosLeaderProtocol.STATE_UNACCEPTED
-                    self.leader.notifyLeader(self, message)
+                if self.unacceptcount >= self.proposer.getQuorumSize():
+                    self.state = PaxosProposerProtocol.STATE_UNACCEPTED
+                    self.proposer.notifyProposer(self, message)
         pass
 
 
@@ -131,11 +131,11 @@ class PaxosAcceptorProtocol(object):
             self.state = PaxosAcceptorProtocol.STATE_PROPOSAL_ACCEPTED
             print "acceptor (%s) accept %s" % (self.client.port, self.proposalID)
             LOG.add_event({'proposalID':self.proposalID, 'type':'accepted', 'acceptor':self.client.id, 'value': True})
-            # Could check on the value here, if we don't trust leaders to honour what we tell them
-            # send reply to leader acknowledging
+            # Could check on the value here, if we don't trust proposersproposer to honour what we tell them
+            # send reply to proposer acknowledging
             msg = Message(Message.MSG_ACCEPTOR_ACCEPT)
             msg.copyAsReply(message)
-            for l in self.client.leaders:
+            for l in self.client.proposers:
                 msg.to = l
                 self.client.sendMessage(msg)
             self.notifyClient(message)

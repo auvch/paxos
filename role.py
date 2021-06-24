@@ -5,15 +5,15 @@ import Queue
 import log
 from message import Message, MessageHandler, AsyncMessageHandler
 from record import InstanceRecord
-from paxos_protocol import PaxosLeaderProtocol, PaxosAcceptorProtocol
+from paxos_protocol import PaxosProposerProtocol, PaxosAcceptorProtocol
 
 LOG = log.LOG
 
 class Acceptor(object):
-    def __init__(self, port, id, leaders):
+    def __init__(self, port, id, proposers):
         self.port = port
         self.id = id # start from 0
-        self.leaders = leaders
+        self.proposers = proposers
         self.instances = {}
         self.msg_handler = AsyncMessageHandler(self, self.port)
         self.failed = False
@@ -28,6 +28,7 @@ class Acceptor(object):
     def fail(self):
         self.failed = True
         LOG.set_acceptor_live(self.id, False)
+        print("Acceptor %d failed." % self.id)
 
     def recover(self):
         self.failed = False
@@ -63,43 +64,117 @@ class Acceptor(object):
     def getInstanceValue(self, instance):
         return self.instances[instance].value
 
-class Leader(object):
-    def __init__(self, port, id, leaders=None, acceptors=None):
+class Proposer(object):
+    def __init__(self, port, id, proposers=None, acceptors=None):
         self.port = port
         self.id = id # start from 0
-        if leaders == None:
-            self.leaders = []
+        if proposers == None:
+            self.proposers = []
         else:
-            self.leaders = leaders
+            self.proposers = proposers
         if acceptors == None:
             self.acceptors = []
         else:
             self.acceptors = acceptors
-        self.group = self.leaders + self.acceptors
+        self.group = self.proposers + self.acceptors
+        self.isPrimary = False
         self.proposalCount = 0
         self.msg_handler = AsyncMessageHandler(self, port)
         self.instances = {}
+        self.hbListener = Proposer.HeartbeatListener(self)
+        self.hbSender = Proposer.HeartbeatSender(self)
         self.highestInstance = 0
         self.stopped = True
         # The last time we tried to fix up any gaps
         self.lasttime = time.time()
 
+    # ------------------------------------------------------
+    # These two classes listen for heartbeats from other proposers
+    # and, if none appear, tell this proposer that it should
+    # be the primary
+
+    class HeartbeatListener(threading.Thread):
+        def __init__(self, proposer):
+            self.proposer = proposer
+            self.queue = Queue.Queue()
+            self.abort = False
+            threading.Thread.__init__(self)
+
+        def newHB(self, message):
+            self.queue.put(message)
+
+        def doAbort(self):
+            self.abort = True
+
+        def run(self):
+            elapsed = 0
+            while not self.abort:
+                s = time.time()
+                try:
+                    hb = self.queue.get(True, 2)
+                    # Easy way to settle conflicts - if your port number is bigger than mine,
+                    # you get to be the proposer
+                    if hb.source > self.proposer.port:
+                        self.proposer.setPrimary(False)
+                except:  # Nothing was got
+                    self.proposer.setPrimary(True)
+
+    class HeartbeatSender(threading.Thread):
+        def __init__(self, proposer):
+            self.proposer = proposer
+            self.abort = False
+            threading.Thread.__init__(self)
+
+        def doAbort(self):
+            self.abort = True
+
+        def run(self):
+            while not self.abort:
+                time.sleep(1)
+                if self.proposer.isPrimary:
+                    msg = Message(Message.MSG_HEARTBEAT)
+                    msg.source = self.proposer.port
+                    for l in self.proposer.proposers:
+                        msg.to = l
+                        self.proposer.sendMessage(msg)
+
+    # ------------------------------------------------------
+
     def sendMessage(self, message):
         self.msg_handler.sendMessage(message)
 
     def start(self):
+        self.hbSender.start()
+        self.hbListener.start()
         self.msg_handler.start()
+        LOG.set_proposer_live(self.id, True)
         self.stopped = False
 
-    def stop(self):
+    def stop(self, fail=False):
+        self.hbSender.doAbort()
+        self.hbListener.doAbort()
         self.msg_handler.doAbort()
+        if fail:
+            LOG.set_proposer_live(self.id, False)
+            print("Proposer %d failed." % self.id)
+        else:
+            print("Proposer %d stopped." % self.id)
         self.stopped = True
+
+    def setPrimary(self, primary):
+        if self.isPrimary != primary:
+            # Only print if something's changed
+            if primary:
+                print "I (%s) am the leader" % self.port
+            else:
+                print "I (%s) am NOT the leader" % self.port
+        self.isPrimary = primary
 
     def getGroup(self):
         return self.group
 
-    def getLeaders(self):
-        return self.leaders
+    def getProposers(self):
+        return self.proposers
 
     def getAcceptors(self):
         return self.acceptors
@@ -138,20 +213,27 @@ class Leader(object):
         if self.stopped:
             return
         if message == None:
+            # Only run every 15s otherwise you run the risk of cutting good protocols off in their prime :(
+            if self.isPrimary and time.time() - self.lasttime > 15.0:
+                self.findAndFillGaps()
+                self.garbageCollect()
             return
+        if message.command == Message.MSG_HEARTBEAT:
+            self.hbListener.newHB(message)
+            return True
         if message.command == Message.MSG_EXT_PROPOSE:
             print "External proposal received at port %s" % (self.port)
             self.newProposal(message.value, instance=message.instanceID)
             return True
-        if message.command != Message.MSG_ACCEPTOR_ACCEPT:
+        if self.isPrimary and message.command != Message.MSG_ACCEPTOR_ACCEPT:
             self.instances[message.instanceID].getProtocol(message.proposalID).doTransition(message)
         if message.command == Message.MSG_ACCEPTOR_ACCEPT:
             if message.instanceID not in self.instances:
                 self.instances[message.instanceID] = InstanceRecord()
             record = self.instances[message.instanceID]
             if message.proposalID not in record.protocols:
-                protocol = PaxosLeaderProtocol(self)
-                protocol.state = PaxosLeaderProtocol.STATE_AGREED
+                protocol = PaxosProposerProtocol(self)
+                protocol.state = PaxosProposerProtocol.STATE_AGREED
                 protocol.proposalID = message.proposalID
                 protocol.instanceID = message.instanceID
                 protocol.value = message.value
@@ -162,7 +244,7 @@ class Leader(object):
         return True
 
     def newProposal(self, value, instance=None):
-        protocol = PaxosLeaderProtocol(self)
+        protocol = PaxosProposerProtocol(self)
         if instance == None:
             self.highestInstance += 1
             instanceID = self.highestInstance
@@ -180,16 +262,16 @@ class Leader(object):
         protocol.propose(value, id, instanceID)
         record.addProtocol(protocol)
 
-    def notifyLeader(self, protocol, message):
+    def notifyProposer(self, protocol, message):
         # Protocols call this when they're done
-        if protocol.state == PaxosLeaderProtocol.STATE_ACCEPTED:
+        if protocol.state == PaxosProposerProtocol.STATE_ACCEPTED:
             print "Protocol instance %s accepted with value %s" % (message.instanceID, message.value)
             LOG.add_event({"type":"result", "proposer":self.id, "proposalID":message.proposalID, "accepted":True, "value":message.value})
             self.instances[message.instanceID].accepted = True
             self.instances[message.instanceID].value = message.value
             self.highestInstance = max(message.instanceID, self.highestInstance)
             return
-        if protocol.state == PaxosLeaderProtocol.STATE_REJECTED:
+        if protocol.state == PaxosProposerProtocol.STATE_REJECTED:
             # Look at the message to find the value, and then retry
             # Eventually, assuming that the acceptors will accept some value for
             # this instance, the protocol will complete.
@@ -197,5 +279,5 @@ class Leader(object):
             #LOG.add_event({"type":"result", "proposalID":(self.port, self.proposalCount), "accepted":False})
             self.newProposal(message.value)
             return True
-        if protocol.state == PaxosLeaderProtocol.STATE_UNACCEPTED:
+        if protocol.state == PaxosProposerProtocol.STATE_UNACCEPTED:
             pass
