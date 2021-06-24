@@ -63,6 +63,6 @@ if __name__ == '__main__':
     for c in clients:
         c.stop()
 
-    print "\nProposer 1 history: ", proposer.getHistory()
-    print "Proposer 2 history: ", proposer2.getHistory()
+    print "\nProposer 0 history: ", proposer.getHistory()
+    print "Proposer 1 history: ", proposer2.getHistory()
     LOG.draw_results(print_all=True)

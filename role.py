@@ -165,9 +165,9 @@ class Proposer(object):
         if self.isPrimary != primary:
             # Only print if something's changed
             if primary:
-                print "I (%s) am the leader" % self.port
+                print "Proposer %d: I (%s) am the leader" % (self.id, self.port)
             else:
-                print "I (%s) am NOT the leader" % self.port
+                print "Proposer %d: I (%s) am NOT the leader" % (self.id, self.port)
         self.isPrimary = primary
 
     def getGroup(self):
