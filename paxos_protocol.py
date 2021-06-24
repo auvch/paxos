@@ -5,7 +5,6 @@ from message import Message
 LOG = log.LOG
 
 class PaxosProposerProtocol(object):
-    # 状态
     STATE_UNDEFINED = -1
     STATE_PROPOSED = 0
     STATE_AGREED = 1

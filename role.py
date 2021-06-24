@@ -88,11 +88,6 @@ class Proposer(object):
         # The last time we tried to fix up any gaps
         self.lasttime = time.time()
 
-    # ------------------------------------------------------
-    # These two classes listen for heartbeats from other proposers
-    # and, if none appear, tell this proposer that it should
-    # be the primary
-
     class HeartbeatListener(threading.Thread):
         def __init__(self, proposer):
             self.proposer = proposer
@@ -137,11 +132,6 @@ class Proposer(object):
                     for l in self.proposer.proposers:
                         msg.to = l
                         self.proposer.sendMessage(msg)
-
-    # ------------------------------------------------------
-
-    def sendMessage(self, message):
-        self.msg_handler.sendMessage(message)
 
     def start(self):
         self.hbSender.start()
@@ -193,20 +183,8 @@ class Proposer(object):
     def getNumAccepted(self):
         return len([v for v in self.getHistory() if v != None])
 
-    # ------------------------------------------------------
-
-    def findAndFillGaps(self):
-        # if no message is received, we take the chance to do a little cleanup
-        for i in xrange(1, self.highestInstance):
-            if self.getInstanceValue(i) == None:
-                print "Filling in gap", i
-                self.newProposal(0,
-                                 i)  # This will either eventually commit an already accepted value, or fill in the gap with 0 or no-op
-        self.lasttime = time.time()
-
-    def garbageCollect(self):
-        for i in self.instances:
-            self.instances[i].cleanProtocols()
+    def sendMessage(self, message):
+        self.msg_handler.sendMessage(message)
 
     def recvMessage(self, message):
         """Message handler will call this periodically, even if there's no message available"""
@@ -281,3 +259,16 @@ class Proposer(object):
             return True
         if protocol.state == PaxosProposerProtocol.STATE_UNACCEPTED:
             pass
+
+    def findAndFillGaps(self):
+        # if no message is received, we take the chance to do a little cleanup
+        for i in xrange(1, self.highestInstance):
+            if self.getInstanceValue(i) == None:
+                print "Filling in gap", i
+                self.newProposal(0,
+                                 i)  # This will either eventually commit an already accepted value, or fill in the gap with 0 or no-op
+        self.lasttime = time.time()
+
+    def garbageCollect(self):
+        for i in self.instances:
+            self.instances[i].cleanProtocols()
