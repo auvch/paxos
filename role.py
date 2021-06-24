@@ -222,7 +222,7 @@ class Proposer(object):
             self.hbListener.newHB(message)
             return True
         if message.command == Message.MSG_EXT_PROPOSE:
-            print "External proposal received at port %s" % (self.port)
+            print "External proposal received at port %s with value %d" % (self.port, message.value)
             self.newProposal(message.value, instance=message.instanceID)
             return True
         if self.isPrimary and message.command != Message.MSG_ACCEPTOR_ACCEPT:

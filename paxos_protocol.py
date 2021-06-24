@@ -129,7 +129,7 @@ class PaxosAcceptorProtocol(object):
     def doTransition(self, message):
         if self.state == PaxosAcceptorProtocol.STATE_PROPOSAL_AGREED and message.command == Message.MSG_ACCEPT:
             self.state = PaxosAcceptorProtocol.STATE_PROPOSAL_ACCEPTED
-            print "acceptor (%s) accept %s" % (self.client.port, self.proposalID)
+            print "acceptor (%s) accept proposal %s" % (self.client.port, self.proposalID)
             LOG.add_event({'proposalID':self.proposalID, 'type':'accepted', 'acceptor':self.client.id, 'value': True})
             # Could check on the value here, if we don't trust proposersproposer to honour what we tell them
             # send reply to proposer acknowledging

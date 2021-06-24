@@ -46,6 +46,7 @@ if __name__ == '__main__':
 
     time.sleep(2)
     proposer2.stop(fail=True)
+    time.sleep(5)
     m.instanceID = 1
     m.value = 3
     m.to = 60000
@@ -55,8 +56,8 @@ if __name__ == '__main__':
 
     end = time.time()
 
-    print "Sleeping for 5s"
-    time.sleep(5)
+    print "Sleeping for 10s"
+    time.sleep(10)
     print "Stopping proposers"
     proposer.stop()
     print "Stopping clients"

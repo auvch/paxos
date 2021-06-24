@@ -181,8 +181,12 @@ class Log(object):
                 output += result
             output += "   "
             for i in range(self.num_acceptor):
-                result = " " + str(self.acceptor_results[i])
-                for _ in range(4-len(str(self.acceptor_results[i]))):
+                if self.acceptor_results[i] is None:
+                    result = ""
+                else:
+                    result = str(self.acceptor_results[i])
+                result = " " + result
+                for _ in range(5-len(result)):
                     result = " " + result
                 #output += " "
                 output += result
